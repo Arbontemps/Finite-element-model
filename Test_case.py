@@ -10,7 +10,7 @@ from BV_fonctions_assemblage import assemblage_K, connectivity
 from BV_fonctions_LL_BB import list_dof_l, matrices_LL_BB, vecteur_LL_BB, reorganisation_dof_vec
 from FEM_functions import matrices_N, matrix_ke, matrix_Kr, matrix_K2e, matrix_Kc, U0, matrices_N2e
 from Analytical_beam_formulations import beam_3pt_deflection
-
+from test import BIEN LE BONJOUR CAMARADE
 
 #%% Arbitrary geometry
 hb = 100
