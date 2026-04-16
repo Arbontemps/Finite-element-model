@@ -8,9 +8,9 @@ Test case 4: Connected bi-layer beam with axial load on the top layer, infinite 
 """
 import numpy as np
 import matplotlib.pyplot as plt
-from BV_fonctions_assemblage import *
+from AB_BV_fonctions_assemblage import *
 from FEM_functions import *
-from Analytical_beam_formulations import beam_3pt_deflection, beam_clamped_tension
+from Analytical_beam_formulations import beam_clamped_tension
 
 #%% Arbitrary geometry (N, mm, MPa)
 hb = 100
@@ -35,14 +35,15 @@ L = 1500
 f = 100*9.81
 
 # Meshing : define the dof, nodes and elements
-ndof = 3
+ndof_per_node = 3
 nnodes_per_el = 4
-eldof = nnodes_per_el*ndof
+ndof_per_el = nnodes_per_el*ndof_per_node
 nnodes = 8
 nel = int(nnodes/2 - 1)
-eldof_tot = nnodes * ndof
-list_dof = np.linspace(0, eldof_tot - 1, eldof_tot, dtype=int)
+ndof = nnodes * ndof_per_node
+list_dof = np.linspace(0, ndof - 1, ndof, dtype=int)
 l_el = L / nel
+
 
 # Boundary conditions
 # dof number that is equal to 0 -> clamped beam
@@ -50,25 +51,25 @@ BC = [0, 1, 2, 3]
 cons = constraints(list_dof)
 
 # definition of the stiffness element matrix and assembly global matrix
-kel = true_K2e_matrix(Eb, Sb, Ib, Et, St, It, l_el, eldof)
-kel_int = true_K2e_matrix(Eb, Sb, Ib, Eb, Sb, Ib, l_el, eldof) + matrix_Kinter(1e10, hb, ht, min(eb,et), l_el, eldof)
+kel = true_K2e_matrix(Eb, Sb, Ib, Et, St, It, l_el, ndof_per_el)
+kel_int = true_K2e_matrix(Eb, Sb, Ib, Eb, Sb, Ib, l_el, ndof_per_el) + matrix_Kinter(1e10, hb, ht, min(eb,et), l_el, ndof_per_el)
 
 _, _, _, local_dof = connectivity(nnodes_per_el, nel, ndof, 'bilayer')
 list_el = [{'dof_el':local_dof + 6*i, 'Kel':kel} for i in range(nel)]
 list_el_int = [{'dof_el':local_dof + 6*i, 'Kel':kel_int} for i in range(nel)]
 
-Ktot = assemblage_K(nel, list_el, eldof_tot, eldof)
-Ktot_int = assemblage_K(nel, list_el_int, eldof_tot, eldof)
+Ktot = assemblage_K(nel, list_el, ndof, ndof_per_el)
+Ktot_int = assemblage_K(nel, list_el_int, ndof, ndof_per_el)
 
 # reduce global stiffness matrix to the constrained K_tilde (because dof linked between the bot and top layer)
-T, indep = matrix_T(eldof_tot, cons)
+T, indep = matrix_T(ndof, cons)
 BC_red = map_BC_to_reduced(BC, indep)
 
 K_tilde = T.T @ Ktot @ T
 K_tilde_int = T.T @ Ktot_int @ T
 
 # definition of the global force vector
-Ftot_b, Ftot_t = np.zeros(eldof_tot), np.zeros(eldof_tot)
+Ftot_b, Ftot_t = np.zeros(ndof), np.zeros(ndof)
 Ftot_b[0], Ftot_b[18] = -f, f
 Ftot_t[3], Ftot_t[21] = -f, f
 F_tilde_b = T.T @ Ftot_b

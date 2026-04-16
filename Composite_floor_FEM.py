@@ -2,8 +2,8 @@
 """ FEM resolution of a loaded beam"""
 import numpy as np
 import matplotlib.pyplot as plt
-from BV_fonctions_LL_BB import list_dof_l, matrices_LL_BB, vecteur_LL_BB, reorganisation_dof_vec
-from BV_fonctions_assemblage import *
+from BV_fonctions_LL_BB import list_dof_l, matrices_LL_BB, vecteur_LL_BB
+from AB_BV_fonctions_assemblage import *
 from FEM_functions import *
 from Analytical_beam_formulations import beam_4pt_deflection
 #%%
@@ -49,7 +49,7 @@ L =  l_el * nel
 # definition of the stiffness element matrix 
 kel_bs = matrix_ke(l_el, E_b, h_b, e_b, ndof_per_el_bs) + matrix_Kr(k_es, exc) 
 kel_db = true_K2e_matrix(E_b, S_b, IGz_b, E_es, S_es, IGz_es, l_el, ndof_per_el_db) 
-kel_dbi = true_K2e_matrix(E_b, S_b, IGz_b, E_es, S_es, IGz_es, l_el, ndof_per_el_db) + matrix_Kc(k_c, h_b, h_es, l_el/2, l_el)
+kel_dbi = true_K2e_matrix(E_b, S_b, IGz_b, E_es, S_es, IGz_es, l_el, ndof_per_el_db) + matrix_Kinter(k_c, h_b, h_es, min(e_b, e_es), l_el, ndof_per_el_db)
 
 # load connectivity tables for assembly
 TC_elnodes_bs, TC_ndof_bs, TC_nloc_bs, local_dof_bs = connectivity(nnodes_per_el_bs, nel, ndof_per_node, 'monolayer')
@@ -128,100 +128,6 @@ gain_dbi = np.min(v_analytic)/np.min(vtot_dbi)
 print('v analytic / v beam+spring (gain_bs) = ', '{:.4}'.format(gain_bs))
 print('v analytic / v 2-connected layer (gain_dbi) = ', '{:.4}'.format(gain_dbi))
 
-
-
-
-
-
-
-
-
-
-
-
-#%%
-""" Try to calculate the stiffness gain using beam+spring (_bs), double layer beam (_db) and double layer beam + interface (_dbi)
-Mesh definition: one element is defined between two connectors -0.13556292869565217"""
-f = 1000 # load in N
-l_el = L_es
-# Define the dof of both bot (_b) and top (_t) layer
-ndofnodes_b = 3
-ndofnodes_t = 1
-ndofel_bs, ndofel_db = ndofnodes_b * 2, (ndofnodes_b + ndofnodes_t) * 2
-nnodes_b, nnodes_t = N_c, N_c 
-nel = N_c - 1
-ndof_bs, ndof_db = nnodes_b * ndofnodes_b, (nnodes_b * ndofnodes_b) + (nnodes_t * ndofnodes_t)
-dof_bs, dof_db = np.linspace(1, ndof_bs, ndof_bs), np.linspace(1, ndof_db, ndof_db)
-list_ndof_bs, list_ndof_db = np.linspace(0, ndof_bs-1, ndof_bs, dtype=int), np.linspace(0, ndof_db - 1, ndof_db, dtype=int)
-L = l_el * nel
-x_nodes = np.linspace(0, L, N_c) # position of each nodes in the global reference frame with one end as origin (in mm)
-# Define load vector and BC for 4-pts bending
-BC_bs, BC_db = [0, 1, ndof_bs-2], [0, 1, 19, ndof_db-3]
-F_bs, F_db = np.array([0]*ndof_bs), np.array([0]*ndof_db)
-F_bs[1], F_bs[10], F_bs[16], F_bs[25] = -f/2, f/2, f/2, -f/2
-F_db[1], F_db[13], F_db[21], F_db[33] = -f/2, f/2, f/2, -f/2
-
-#k_c = 1e10
-kel_bs = matrix_ke(l_el, E_b, h_b, e_b, ndofel_bs) + matrix_Kr(k_es, exc) 
-kel_db = matrix_K2e(E_b, h_b, e_b, E_es, h_es, e_es, l_el)
-kel_dbi = matrix_K2e(E_b, h_b, e_b, E_es, h_es, e_es, l_el) + matrix_Kc(k_c, h_b, h_es, 0, l_el)
-
-list_el_bs, list_el_db, list_el_dbi = [{'dof_el':np.array([0,1,2,3,4,5]), 'Kel':kel_bs}], [], []
-TC_nodes_db, TC_dof_db = connectivity()
-
-for i in range(nel):
-    nodes = TC_nodes_db[i]
-    dof_db = [TC_dof_db[nodes[j]][k] for j in range(len(nodes)) for k in range(len(TC_dof_db[nodes[j]]))]
-    list_el_db.append({'dof_el':dof_db, 'Kel': kel_db})
-    list_el_dbi.append({'dof_el':dof_db, 'Kel': kel_dbi})
-    if i < nel - 1:
-        list_el_bs.append({'dof_el':list_el_bs[i]['dof_el']+3, 'Kel':kel_bs})
-
-Ktot_bs, Ktot_db, Ktot_dbi = assemblage_K(nel, list_el_bs, ndof_bs, ndofel_bs), \
-                             assemblage_K(nel, list_el_db, ndof_db, ndofel_db), \
-                             assemblage_K(nel, list_el_dbi, ndof_db, ndofel_db)
-
-dof_L_bs, dof_B_bs  = list_dof_l(BC_bs, ndof_bs)[:-1]
-dof_L_db, dof_B_db = list_dof_l(BC_db, ndof_db)[:-1]
-Ktot_bs_LL, Ktot_db_LL, Ktot_dbi_LL = matrices_LL_BB(Ktot_bs, dof_L_bs, BC_bs)[0], \
-                                      matrices_LL_BB(Ktot_db, dof_L_db, BC_db)[0], \
-                                      matrices_LL_BB(Ktot_dbi, dof_L_db, BC_db)[0]
-F_bs_LL, F_db_LL = vecteur_LL_BB(F_bs, dof_L_bs, dof_B_bs)[0], vecteur_LL_BB(F_db, dof_L_db, dof_B_db)[0]
-
-U_bs, U_db, U_dbi = np.zeros(ndof_bs), np.zeros(ndof_db), np.zeros(ndof_db)
-U_bs_LL, U_db_LL, U_dbi_LL = np.linalg.solve(Ktot_bs_LL, F_bs_LL), np.linalg.solve(Ktot_db_LL, F_db_LL), np.linalg.solve(Ktot_dbi_LL, F_db_LL)
-U_bs[np.delete(list_ndof_bs, BC_bs)] = U_bs_LL
-U_db[np.delete(list_ndof_db, BC_db)] = U_db_LL
-U_dbi[np.delete(list_ndof_db, BC_db)] = U_dbi_LL
-
-xtot =  [0]
-vtot_bs, vtot_db, vtot_dbi = [0], [0], [0]
-for i in range(nel):
-    uel_bs, uel_db, uel_dbi = U_bs[list_el_bs[i]['dof_el']], U_db[list_el_db[i]['dof_el']], U_dbi[list_el_dbi[i]['dof_el']]
-    xel = np.linspace(0, l_el, 10)
-    xtot.extend(xel+xtot[-1])
-    for x in xel:
-        v_bs, v_db, v_dbi = U0(x, l_el, uel_bs)[1], U0(x, l_el, uel_db[:-2])[1], U0(x, l_el, uel_dbi[:-2])[1]
-        vtot_bs.append(-v_bs)
-        vtot_db.append(-v_db)
-        vtot_dbi.append(-v_dbi)
-vtot_bs, vtot_db, vtot_dbi = np.array(vtot_bs), np.array(vtot_db), np.array(vtot_dbi)
-v_analytic = []
-for x in xtot:
-    v_analytic.append(beam_4pt_deflection(x, f, E_b, IGz_b, L, 1089, 1815))
-plt.plot(xtot, v_analytic, c='black', label='Analytical results with bot layer only')
-plt.plot(xtot, vtot_bs, color='blue', label='Beam + offset spring')
-plt.plot(xtot, vtot_db, color='red', label='2-unconnected layer')
-plt.plot(xtot, vtot_dbi, color='orange', label='2-connected layer (kc=13kN/mm)')
-plt.xlabel('x-position (mm)')
-plt.ylabel('Deflection (mm)')
-plt.legend()
-#plt.savefig('FEM_Results_04-03-2026.jpg')
-plt.show()
-gain_bs = np.min(v_analytic)/np.min(vtot_bs)
-gain_dbi = np.min(v_analytic)/np.min(vtot_dbi)
-print('v analytic / v beam+spring (gain_bs) = ', '{:.4}'.format(gain_bs))
-print('v analytic / v 2-connected layer (gain_dbi) = ', '{:.4}'.format(gain_dbi))
 
 
 #%%
