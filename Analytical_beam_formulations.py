@@ -10,7 +10,7 @@ def beam_3pt_deflection(L, EI, F, n=100):
     return x, v
 
 
-def beam_4pt_deflection(x,F,E,I,L,a,b):
+def beam_4pt_deflection(x, F, E, I, L, a, b):
     RB=F*(a+b)/(2*L)
     RA=F-RB
     C1=(F*((L-a)**3+(L-b)**3)/12 - RA*L**3/6)/L
@@ -21,3 +21,8 @@ def beam_4pt_deflection(x,F,E,I,L,a,b):
     else: 
         v=RA*x**3/6 - F*(x-a)**3/12 - F*(x-b)**3/12 + C1*x
     return v/(E*I)
+
+def beam_clamped_tension(F, E, S, L, n=100):
+    x = np.linspace(0, L, n)
+    ux = F * x / (E * S)
+    return x, ux

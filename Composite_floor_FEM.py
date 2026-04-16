@@ -2,9 +2,9 @@
 """ FEM resolution of a loaded beam"""
 import numpy as np
 import matplotlib.pyplot as plt
-from BV_fonctions_assemblage import assemblage_K, connectivity
 from BV_fonctions_LL_BB import list_dof_l, matrices_LL_BB, vecteur_LL_BB, reorganisation_dof_vec
-from FEM_functions import matrices_N, true_Ke_matrix, matrix_Kr, matrix_K2e, matrix_Kc, U0, matrix_ke
+from BV_fonctions_assemblage import *
+from FEM_functions import *
 from Analytical_beam_formulations import beam_4pt_deflection
 #%%
 """ Geometry and material properties (MPa, N, mm) """
@@ -31,62 +31,113 @@ k_c = 13000 # stiffness of 2 connectors in N/mm
 exc = h_b/2 + h_es/2 # excentricity of the spring modelizing earth-wooden sleepers element (at its gravity center)
 
 #%%
-""" Application on a clamped beam loaded at one end and both 1 and 3 elements """
-# Length, node vector and load definition: 50 kg at one end and clamped at the other end
-L, f = 1500, 50*9.81 # 
-x_nodes_el1 = np.linspace(0, L, 2)
-x_nodes_el3 = np.linspace(0, L, 4)
-ndofnode = 3
-ndofel = ndofnode * 2
-n_el1, n_el3 = 1, 3 
-nnode_el1, nnode_el3 = n_el1 + 1, n_el3 + 1
-ndof_el1, ndof_el3 = ndofnode * nnode_el1, ndofnode * nnode_el3
-list_ndof_el1, list_ndof_el3 = np.linspace(0, ndof_el1 - 1,ndof_el1, dtype=int), np.linspace(0, ndof_el3 - 1,ndof_el3, dtype=int)
-Fext_el1 = np.array([0, -f, -f*L, 0, f, 0])
-Fext_el3 = np.array([0]*ndof_el3)
-Fext_el3[1:3], Fext_el3[-2] = np.array([-f, -f*L]), f
-l_el = L / n_el3
-# Boundary conditions
-BC = [0, 1, 2] # dof number that is equal to 0 
-dof_L_el1, dof_L_el3 = list_dof_l(BC, ndof_el1)[0], list_dof_l(BC, ndof_el3)[0] # free dof number
-# Stiffness matrix element and assembly
-k_el1 = matrix_ke(L, E_b, h_b, e_b, ndofel)
-k_el3 = matrix_ke(l_el, E_b, h_b, e_b, ndofel)
+""" Try to calculate the stiffness gain using beam+spring (_bs), double layer beam (_db) and double layer beam + interface (_dbi)
+Mesh definition: one element is defined between two connectors -0.13556292869565217"""
+f = 1000 # load in N
+l_el = L_es
 
-list_el3 = [{'dof_el':[0,1,2,3,4,5], 'Kel':k_el3}, {'dof_el':[3,4,5,6,7,8], 'Kel':k_el3}, {'dof_el':[6,7,8,9,10,11], 'Kel':k_el3}]
-Ktot_el3 = assemblage_K(n_el3, list_el3, ndof_el3, ndofel)
-Ktot_el1_LL = matrices_LL_BB(k_el1, dof_L_el1, BC)[0]
-Ktot_el3_LL = matrices_LL_BB(Ktot_el3, dof_L_el3, BC)[0]
-# Compute displacement
-U_el1 = np.array([0.]*ndof_el1)
-U_el3 = np.array([0.]*ndof_el3)
-U_el1[np.delete(list_ndof_el1, BC)] = np.linalg.solve(Ktot_el1_LL, Fext_el1[np.delete(list_ndof_el1, BC)])
-U_el3[np.delete(list_ndof_el3, BC)] = np.linalg.solve(Ktot_el3_LL, Fext_el3[np.delete(list_ndof_el3, BC)])
+# Meshing : define the dof, nodes and elements
+ndof_per_node = 3
+nnodes_per_el_bs, nnodes_per_el_db = 2, 4
+ndof_per_el_bs, ndof_per_el_db = nnodes_per_el_bs * ndof_per_node, nnodes_per_el_db * ndof_per_node
+nnodes_bs, nnodes_db = N_c, 2 * N_c
+nel = int(nnodes_db/2 - 1)
+ndof_bs, ndof_db = nnodes_bs * ndof_per_node, nnodes_db * ndof_per_node
+list_dof_bs, list_dof_db = np.linspace(0, ndof_bs - 1, ndof_bs, dtype=int), np.linspace(0, ndof_db - 1, ndof_db, dtype=int)
+L =  l_el * nel
 
-xtot_el1, xtot_el3 =  np.linspace(0, L, 100), [0]
-vtot_el1, vtot_el3 = [-U0(x, L, U_el1)[1] for x in xtot_el1], [0]
-for i in range(n_el3):
-    uel = U_el3[list_el3[i]['dof_el']]
-    xel = np.linspace(0, l_el, 10)
-    xtot_el3.extend(xel+xtot_el3[-1])
+# definition of the stiffness element matrix 
+kel_bs = matrix_ke(l_el, E_b, h_b, e_b, ndof_per_el_bs) + matrix_Kr(k_es, exc) 
+kel_db = true_K2e_matrix(E_b, S_b, IGz_b, E_es, S_es, IGz_es, l_el, ndof_per_el_db) 
+kel_dbi = true_K2e_matrix(E_b, S_b, IGz_b, E_es, S_es, IGz_es, l_el, ndof_per_el_db) + matrix_Kc(k_c, h_b, h_es, l_el/2, l_el)
+
+# load connectivity tables for assembly
+TC_elnodes_bs, TC_ndof_bs, TC_nloc_bs, local_dof_bs = connectivity(nnodes_per_el_bs, nel, ndof_per_node, 'monolayer')
+TC_elnodes_db, TC_ndof_db, TC_nloc_db, local_dof_db = connectivity(nnodes_per_el_db, nel, ndof_per_node, 'bilayer')
+list_el_bs, list_el_db, list_el_dbi = [{'dof_el':np.array([0,1,2,3,4,5]), 'Kel':kel_bs}], [], []
+for i in range(nel):
+    nodes = TC_elnodes_db[i]
+    dof_db = [TC_ndof_db[nodes[j]][k] for j in range(len(nodes)) for k in range(len(TC_ndof_db[nodes[j]]))]
+    list_el_db.append({'dof_el':local_dof_db+dof_db[0], 'Kel': kel_db})
+    list_el_dbi.append({'dof_el':local_dof_db+dof_db[0], 'Kel': kel_dbi})
+    if i < nel - 1:
+        list_el_bs.append({'dof_el':list_el_bs[i]['dof_el']+3, 'Kel':kel_bs})
+
+# assembly
+Ktot_bs = assemblage_K(nel, list_el_bs, ndof_bs, ndof_per_el_bs)
+Ktot_db = assemblage_K(nel, list_el_db, ndof_db, ndof_per_el_db)
+Ktot_dbi = assemblage_K(nel, list_el_dbi, ndof_db, ndof_per_el_db)
+
+# Boundary conditions: dof number that is equal to 0
+BC_bs, BC_db = [0, 1, ndof_bs-2], [0, 1, 27, ndof_db-5]
+
+# constraints: dof equality for the reduced system (because dof linked between the bot and top layer)
+cons_db = constraints(list_dof_db)
+
+# reduce global stiffness matrix to the constrained Ktot_tilde (because dof linked between the bot and top layer)
+T, indep = matrix_T(ndof_db, cons_db)
+BC_db_red = map_BC_to_reduced(BC_db, indep)
+Ktot_tilde_db =  T.T @ Ktot_db @ T
+Ktot_tilde_dbi = T.T @ Ktot_dbi @ T
+
+# definition of the global force vector
+Ftot_bs, Ftot_db = np.zeros(ndof_bs), np.zeros(ndof_db)
+Ftot_bs[1], Ftot_bs[10], Ftot_bs[16], Ftot_bs[25] = -f/2, f/2, f/2, -f/2
+Ftot_db[1], Ftot_db[19], Ftot_db[31], Ftot_db[49] = -f/2, f/2, f/2, -f/2
+Ftot_tilde_db = T.T @ Ftot_db
+
+# add BC on the matrix system
+Ktot_bs, Ftot_bs = apply_dirichlet_BC(Ktot_bs, Ftot_bs, BC_bs)
+Ktot_tilde_db, Ftot_tilde_db = apply_dirichlet_BC(Ktot_tilde_db, Ftot_tilde_db, BC_db_red)
+Ktot_tilde_dbi, _ = apply_dirichlet_BC(Ktot_tilde_dbi, Ftot_tilde_db, BC_db_red)
+
+# Resolution and reconstruction
+Utot_bs = np.linalg.solve(Ktot_bs, Ftot_bs)
+Utot_tilde_db = np.linalg.solve(Ktot_tilde_db, Ftot_tilde_db)
+Utot_tilde_dbi = np.linalg.solve(Ktot_tilde_dbi, Ftot_tilde_db)
+Utot_db = T @ Utot_tilde_db
+Utot_dbi = T @ Utot_tilde_dbi
+
+# prepare the plots by extraction the deflection along the beam with form functions 
+xtot =  [0]
+vtot_bs, vtot_db, vtot_dbi = [0], [0], [0]
+for i in range(nel):
+    uel_bs, uel_db, uel_dbi = Utot_bs[list_el_bs[i]['dof_el']], Utot_db[list_el_db[i]['dof_el']], Utot_dbi[list_el_dbi[i]['dof_el']]
+    xel = np.linspace(0, l_el, 100)
+    xtot.extend(xel+xtot[-1])
     for x in xel:
-        v_el3 = U0(x, l_el, uel)[1]
-        vtot_el3.append(-v_el3)
-vtot_el1, vtot_el3 = np.array(vtot_el1), np.array(vtot_el3)
-v_true = f*L**3/(3*E_b*IGz_b)
-
-print('v true (mm) = ', -v_true, '\n''v calc 1 elem (mm) = ', vtot_el1[-1], '\n''v calc 3 elem (mm) = ', vtot_el3[-1])
-print('The exact solution is found with 1 element as the form functions are able to reconstruct the kinematic')
-plt.plot(xtot_el1, vtot_el1, color='blue', label='1 elem')
-plt.plot(xtot_el3, vtot_el3, color='red', label='3 elem')
-plt.scatter(x_nodes_el1, [0, vtot_el1[-1]], marker='.', c='red', s=50, label='1 elem nodes')
-plt.scatter(x_nodes_el3, [vtot_el3[np.where(np.array(xtot_el3)==x)[0]][0] for x in x_nodes_el3], \
-                                        marker='s', c='blue', s=50, label='3 elem nodes')
-plt.scatter(x_nodes_el1[-1], -v_true, marker=(5,1), s=100, color='black', label='Exact solution')
+        v_bs, v_db, v_dbi = U0(x, l_el, uel_bs)[1], U0_bilayer(x, l_el, uel_db)[1], U0_bilayer(x, l_el, uel_dbi)[1]
+        vtot_bs.append(-v_bs)
+        vtot_db.append(-v_db)
+        vtot_dbi.append(-v_dbi)
+vtot_bs, vtot_db, vtot_dbi = np.array(vtot_bs), np.array(vtot_db), np.array(vtot_dbi)
+v_analytic = []
+for x in xtot:
+    v_analytic.append(beam_4pt_deflection(x, f, E_b, IGz_b, L, 1089, 1815))
+plt.plot(xtot, v_analytic, c='black', label='Analytical results with bot layer only')
+plt.plot(xtot, vtot_bs, color='blue', label='Beam + offset spring')
+plt.plot(xtot, vtot_db, color='red', label='2-unconnected layer')
+plt.plot(xtot, vtot_dbi, color='orange', label='2-connected layer (kc=13kN/mm)')
 plt.xlabel('x-position (mm)')
 plt.ylabel('Deflection (mm)')
 plt.legend()
+#plt.savefig('FEM_Results_04-03-2026.jpg')
 plt.show()
+gain_bs = np.min(v_analytic)/np.min(vtot_bs)
+gain_dbi = np.min(v_analytic)/np.min(vtot_dbi)
+print('v analytic / v beam+spring (gain_bs) = ', '{:.4}'.format(gain_bs))
+print('v analytic / v 2-connected layer (gain_dbi) = ', '{:.4}'.format(gain_dbi))
+
+
+
+
+
+
+
+
+
+
+
 
 #%%
 """ Try to calculate the stiffness gain using beam+spring (_bs), double layer beam (_db) and double layer beam + interface (_dbi)
