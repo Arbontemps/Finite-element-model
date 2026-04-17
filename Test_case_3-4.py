@@ -1,9 +1,10 @@
 #%%
 """
 Arthur Bontemps
-Test case 3: Unconnected bi-layer beam with axial load on each layer (2 calculations). Comparison with analytical results
-Test case 4: Connected bi-layer beam with axial load on the top layer, infinite stiffness for each layer to show rigid body motion. 
-    One can calculate the force at the interface analytically and compare to what shows the model.
+Test case 3: Unconnected bi-layer beam with axial load on each layer (2 calculations), with 3 elements. Comparison with analytical results
+Test case 4: Connected bi-layer beam with axial load on the top layer, with 3 elements and infinite stiffness at interface.
+    Comparison with analytical results
+ for each layer to show rigid body motion. One can calculate the force at the interface analytically and compare to what shows the model.
   
 """
 import numpy as np
@@ -36,13 +37,13 @@ f = 100*9.81
 
 # Meshing : define the dof, nodes and elements
 ndof_per_node = 3
-nnodes_per_el = 4
-ndof_per_el = nnodes_per_el*ndof_per_node
+nnodes_per_elem = 4
+ndof_per_elem = nnodes_per_elem * ndof_per_node
 nnodes = 8
-nel = int(nnodes/2 - 1)
+nelem = int(nnodes/2 - 1)
 ndof = nnodes * ndof_per_node
 list_dof = np.linspace(0, ndof - 1, ndof, dtype=int)
-l_el = L / nel
+l_elem = L / nelem
 
 
 # Boundary conditions
@@ -51,74 +52,74 @@ BC = [0, 1, 2, 3]
 cons = constraints(list_dof)
 
 # definition of the stiffness element matrix and assembly global matrix
-kel = true_K2e_matrix(Eb, Sb, Ib, Et, St, It, l_el, ndof_per_el)
-kel_int = true_K2e_matrix(Eb, Sb, Ib, Eb, Sb, Ib, l_el, ndof_per_el) + matrix_Kinter(1e10, hb, ht, min(eb,et), l_el, ndof_per_el)
+kelem = true_k2B_matrix(Eb, Sb, Ib, Et, St, It, l_elem, ndof_per_elem)
+kelem_i = true_k2B_matrix(Eb, Sb, Ib, Eb, Sb, Ib, l_elem, ndof_per_elem) + matrix_ki(1e10, hb, hb, eb, l_elem, ndof_per_elem)
 
-_, _, _, local_dof = connectivity(nnodes_per_el, nel, ndof, 'bilayer')
-list_el = [{'dof_el':local_dof + 6*i, 'Kel':kel} for i in range(nel)]
-list_el_int = [{'dof_el':local_dof + 6*i, 'Kel':kel_int} for i in range(nel)]
+_, _, _, local_dof = connectivity(nnodes_per_elem, nelem, ndof, 'bilayer')
+list_elem = [{'dof_elem':local_dof + 6*i, 'kelem':kelem} for i in range(nelem)]
+list_elem_i = [{'dof_elem':local_dof + 6*i, 'kelem':kelem_i} for i in range(nelem)]
 
-Ktot = assemblage_K(nel, list_el, ndof, ndof_per_el)
-Ktot_int = assemblage_K(nel, list_el_int, ndof, ndof_per_el)
+Ktot = assemblage_K(nelem, list_elem, ndof, ndof_per_elem)
+Ktot_i = assemblage_K(nelem, list_elem_i, ndof, ndof_per_elem)
 
-# reduce global stiffness matrix to the constrained K_tilde (because dof linked between the bot and top layer)
+# reduce global stiffness matrix to the constrained Ktot_tilde (because dof linked between the bot and top layer)
 T, indep = matrix_T(ndof, cons)
 BC_red = map_BC_to_reduced(BC, indep)
 
-K_tilde = T.T @ Ktot @ T
-K_tilde_int = T.T @ Ktot_int @ T
+Ktot_tilde = T.T @ Ktot @ T
+Ktot_i_tilde = T.T @ Ktot_i @ T
 
 # definition of the global force vector
 Ftot_b, Ftot_t = np.zeros(ndof), np.zeros(ndof)
 Ftot_b[0], Ftot_b[18] = -f, f
 Ftot_t[3], Ftot_t[21] = -f, f
-F_tilde_b = T.T @ Ftot_b
-F_tilde_t = T.T @ Ftot_t
+Ftot_b_tilde = T.T @ Ftot_b
+Ftot_t_tilde = T.T @ Ftot_t
 
 # add BC on the matrix system
-K_tilde, F_tilde_b = apply_dirichlet_BC(K_tilde, F_tilde_b, BC_red)
-K_tilde_int, F_tilde_t = apply_dirichlet_BC(K_tilde_int, F_tilde_t, BC_red)
+Ktot_tilde, Ftot_b_tilde = apply_dirichlet_BC(Ktot_tilde, Ftot_b_tilde, BC_red)
+Ktot_i_tilde, Ftot_t_tilde = apply_dirichlet_BC(Ktot_i_tilde, Ftot_t_tilde, BC_red)
 
 # Resolution and reconstruction
-U_tilde_b = np.linalg.solve(K_tilde, F_tilde_b)
-U_tilde_t = np.linalg.solve(K_tilde, F_tilde_t)
-U_tilde_int = np.linalg.solve(K_tilde_int, F_tilde_t)
-Utot_b = T @ U_tilde_b
-Utot_t = T @ U_tilde_t
-Utot_int = T @ U_tilde_int
+Utot_b_tilde = np.linalg.solve(Ktot_tilde, Ftot_b_tilde)
+Utot_t_tilde = np.linalg.solve(Ktot_tilde, Ftot_t_tilde)
+Utot_i_tilde = np.linalg.solve(Ktot_i_tilde, Ftot_t_tilde)
+Utot_b = T @ Utot_b_tilde
+Utot_t = T @ Utot_t_tilde
+Utot_i = T @ Utot_i_tilde
 
 # prepare the plots by extraction the deflection along the beam with form functions 
 xtot =  [0]
-utot_b, utot_t, utot_int = [0], [0], [0]
-for i in range(nel):
-    uel_b = Utot_b[list_el[i]['dof_el']]
-    uel_t = Utot_t[list_el[i]['dof_el']]
-    uel_int = Utot_int[list_el_int[i]['dof_el']]
-    xel = np.linspace(0, l_el, 100)
-    xtot.extend(xel+xtot[-1])
-    for x in xel:
-        u_b, u_t = U0_bilayer(x, l_el, uel_b)[0], U0_bilayer(x, l_el, uel_t)[3]
-        u_int = U0_bilayer(x, l_el, uel_int)[3]
+utot_b, utot_t, utot_i = [0], [0], [0]
+for i in range(nelem):
+    uelem_b = Utot_b[list_elem[i]['dof_elem']]
+    uelem_t = Utot_t[list_elem[i]['dof_elem']]
+    uelem_i = Utot_i[list_elem_i[i]['dof_elem']]
+    xelem = np.linspace(0, l_elem, 10)
+    xtot.extend(xelem+xtot[-1])
+    for x in xelem:
+        u_b, u_t = U_NA_bilayer(x, l_elem, uelem_b)[0], U_NA_bilayer(x, l_elem, uelem_t)[3]
+        u_i = U_NA_bilayer(x, l_elem, uelem_i)[3]
         utot_b.append(-u_b)
         utot_t.append(-u_t)
-        utot_int.append(-u_int)
-utot_b, utot_t, utot_int = np.array(utot_b), np.array(utot_t), np.array(utot_int)
+        utot_i.append(-u_i)
+utot_b, utot_t, utot_i = np.array(utot_b), np.array(utot_t), np.array(utot_i)
 
 # calculate analytical solutions u(x) = (F*x) / (E*S) 
 x_analytic, u_analytic_b = beam_clamped_tension(f, Eb, Sb, L)
 x_analytic, u_analytic_t = beam_clamped_tension(f, Et, St, L)
-x_analytic, u_analytic_int = beam_clamped_tension(f, Eb, Sb+St, L)
+x_analytic, u_analytic_i = beam_clamped_tension(f, Eb, 2*Sb, L)
 
 # plot results and compare with an analytical solution
 plt.plot(x_analytic, -u_analytic_b, c='red', label='Analytical solution ux_b')
-plt.plot(x_analytic, -u_analytic_t, c='purple', label='Analytical solution ux_t')
-plt.plot(x_analytic, -u_analytic_int, c='brown', label='Analytical solution kc=inf ux_t')
-plt.plot(xtot, utot_b, c='blue', label='Model ux_b')
-plt.plot(xtot, utot_t, c='black', label='Model ux_t')
-plt.plot(xtot, utot_int, c='orange', label='Model kc=inf ux_t')
+plt.plot(x_analytic, -u_analytic_t, c='blue', label='Analytical solution ux_t')
+plt.plot(x_analytic, -u_analytic_i, c='brown', label='Analytical solution kc=inf ux_t')
+plt.plot(xtot, utot_b, c='red', label='Model ux_b', linestyle='none', marker='.')
+plt.plot(xtot, utot_t, c='blue', label='Model ux_t', linestyle='none', marker='.')
+plt.plot(xtot, utot_i, c='brown', label='Model kc=inf ux_t', linestyle='none', marker='.')
 plt.xlabel('x-position (mm)')
 plt.ylabel('axial displacement (mm)')
-plt.title('Test case 3&4 : Clamped beam with axial load and '+str(nel)+' elements')
+plt.title('Test case 3&4 : Clamped beam with axial load and '+str(nelem)+' elements')
 plt.legend()
 plt.show()
 

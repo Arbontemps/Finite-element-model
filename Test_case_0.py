@@ -7,7 +7,6 @@ _1 : 1 element model; _3: 3 elements model
 
 import numpy as np
 import matplotlib.pyplot as plt
-from BV_fonctions_LL_BB import list_dof_l, matrices_LL_BB
 from AB_BV_fonctions_assemblage import *
 from FEM_functions import *
 
@@ -25,11 +24,11 @@ f = 50*9.81
 x_nodes_1 = np.linspace(0, L, 2)
 x_nodes_3 = np.linspace(0, L, 4)
 ndof_per_node = 3
-ndof_per_el = ndof_per_node * 2
-nel_1, nel_3 = 1, 3 
-nnode_1, nnode_3 = nel_1 + 1, nel_3 + 1
+ndof_per_elem = ndof_per_node * 2
+nelem_1, nelem_3 = 1, 3 
+nnode_1, nnode_3 = nelem_1 + 1, nelem_3 + 1
 ndof_1, ndof_3 = ndof_per_node * nnode_1, ndof_per_node * nnode_3
-l_el = L / nel_3
+l_elem = L / nelem_3
 
 
 # global force vector definition 
@@ -38,10 +37,10 @@ Ftot_3 = np.array([0]*ndof_3)
 Ftot_3[1:3], Ftot_3[-2] = np.array([-f, -f*L]), f
 
 # Stiffness matrix element and assembly the 3 element model 
-kelem_1 = matrix_ke(L, Eb, hb, eb, ndof_per_el)
-kelem_3 = matrix_ke(l_el, Eb, hb, eb, ndof_per_el)
-list_el_3 = [{'dof_el':[0,1,2,3,4,5], 'Kel':kelem_3}, {'dof_el':[3,4,5,6,7,8], 'Kel':kelem_3}, {'dof_el':[6,7,8,9,10,11], 'Kel':kelem_3}]
-Ktot_3 = assemblage_K(nel_3, list_el_3, ndof_3, ndof_per_el)
+kelem_1 = matrix_kB(L, Eb, hb, eb, ndof_per_elem)
+kelem_3 = matrix_kB(l_elem, Eb, hb, eb, ndof_per_elem)
+list_elem_3 = [{'dof_elem':[0,1,2,3,4,5], 'kelem':kelem_3}, {'dof_elem':[3,4,5,6,7,8], 'kelem':kelem_3}, {'dof_elem':[6,7,8,9,10,11], 'kelem':kelem_3}]
+Ktot_3 = assemblage_K(nelem_3, list_elem_3, ndof_3, ndof_per_elem)
 
 # apply BC on Ktot and Ftot
 BC = [0, 1, 2] # dof number that is equal to 0 
@@ -54,13 +53,13 @@ Utot_3 = np.linalg.solve(Ktot_3, Ftot_3)
 
 # prepare the plots by extraction the deflection along the beam with form functions 
 xtot_1, xtot_3 =  np.linspace(0, L, 100), [0]
-vtot_1, vtot_3 = [-U0(x, L, Utot_1)[1] for x in xtot_1], [0]
-for i in range(nel_3):
-    uel = Utot_3[list_el_3[i]['dof_el']]
-    xel = np.linspace(0, l_el, 10)
-    xtot_3.extend(xel+xtot_3[-1])
-    for x in xel:
-        v_3 = U0(x, l_el, uel)[1]
+vtot_1, vtot_3 = [-U_NA(x, L, Utot_1)[1] for x in xtot_1], [0]
+for i in range(nelem_3):
+    uelem = Utot_3[list_elem_3[i]['dof_elem']]
+    xelem = np.linspace(0, l_elem, 10)
+    xtot_3.extend(xelem+xtot_3[-1])
+    for x in xelem:
+        v_3 = U_NA(x, l_elem, uelem)[1]
         vtot_3.append(-v_3)
 vtot_1, vtot_3 = np.array(vtot_1), np.array(vtot_3)
 v_true = f*L**3/(3*Eb*Ib)
@@ -77,3 +76,4 @@ plt.xlabel('x-position (mm)')
 plt.ylabel('Deflection (mm)')
 plt.legend()
 plt.show()
+# %%

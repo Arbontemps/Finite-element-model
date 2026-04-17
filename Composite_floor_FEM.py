@@ -34,39 +34,39 @@ exc = h_b/2 + h_es/2 # excentricity of the spring modelizing earth-wooden sleepe
 """ Try to calculate the stiffness gain using beam+spring (_bs), double layer beam (_db) and double layer beam + interface (_dbi)
 Mesh definition: one element is defined between two connectors -0.13556292869565217"""
 f = 1000 # load in N
-l_el = L_es
+l_elem = L_es
 
 # Meshing : define the dof, nodes and elements
 ndof_per_node = 3
-nnodes_per_el_bs, nnodes_per_el_db = 2, 4
-ndof_per_el_bs, ndof_per_el_db = nnodes_per_el_bs * ndof_per_node, nnodes_per_el_db * ndof_per_node
+nnodes_per_elem_bs, nnodes_per_elem_db = 2, 4
+ndof_per_elem_bs, ndof_per_elem_db = nnodes_per_elem_bs * ndof_per_node, nnodes_per_elem_db * ndof_per_node
 nnodes_bs, nnodes_db = N_c, 2 * N_c
-nel = int(nnodes_db/2 - 1)
+nelem = int(nnodes_db/2 - 1)
 ndof_bs, ndof_db = nnodes_bs * ndof_per_node, nnodes_db * ndof_per_node
 list_dof_bs, list_dof_db = np.linspace(0, ndof_bs - 1, ndof_bs, dtype=int), np.linspace(0, ndof_db - 1, ndof_db, dtype=int)
-L =  l_el * nel
+L =  l_elem * nelem
 
 # definition of the stiffness element matrix 
-kel_bs = matrix_ke(l_el, E_b, h_b, e_b, ndof_per_el_bs) + matrix_Kr(k_es, exc) 
-kel_db = true_K2e_matrix(E_b, S_b, IGz_b, E_es, S_es, IGz_es, l_el, ndof_per_el_db) 
-kel_dbi = true_K2e_matrix(E_b, S_b, IGz_b, E_es, S_es, IGz_es, l_el, ndof_per_el_db) + matrix_Kinter(k_c, h_b, h_es, min(e_b, e_es), l_el, ndof_per_el_db)
+kel_bs = matrix_kB(l_elem, E_b, h_b, e_b, ndof_per_elem_bs) + matrix_kS(k_es, exc) 
+kel_db = true_k2B_matrix(E_b, S_b, IGz_b, E_es, S_es, IGz_es, l_elem, ndof_per_elem_db) 
+kel_dbi = true_k2B_matrix(E_b, S_b, IGz_b, E_es, S_es, IGz_es, l_elem, ndof_per_elem_db) + matrix_ki(k_c, h_b, h_es, min(e_b, e_es), l_elem, ndof_per_elem_db)
 
 # load connectivity tables for assembly
-TC_elnodes_bs, TC_ndof_bs, TC_nloc_bs, local_dof_bs = connectivity(nnodes_per_el_bs, nel, ndof_per_node, 'monolayer')
-TC_elnodes_db, TC_ndof_db, TC_nloc_db, local_dof_db = connectivity(nnodes_per_el_db, nel, ndof_per_node, 'bilayer')
-list_el_bs, list_el_db, list_el_dbi = [{'dof_el':np.array([0,1,2,3,4,5]), 'Kel':kel_bs}], [], []
-for i in range(nel):
-    nodes = TC_elnodes_db[i]
+TC_elemnodes_bs, TC_ndof_bs, TC_nloc_bs, local_dof_bs = connectivity(nnodes_per_elem_bs, nelem, ndof_per_node, 'monolayer')
+TC_elemnodes_db, TC_ndof_db, TC_nloc_db, local_dof_db = connectivity(nnodes_per_elem_db, nelem, ndof_per_node, 'bilayer')
+list_elem_bs, list_elem_db, list_elem_dbi = [{'dof_elem':np.array([0,1,2,3,4,5]), 'kelem':kel_bs}], [], []
+for i in range(nelem):
+    nodes = TC_elemnodes_db[i]
     dof_db = [TC_ndof_db[nodes[j]][k] for j in range(len(nodes)) for k in range(len(TC_ndof_db[nodes[j]]))]
-    list_el_db.append({'dof_el':local_dof_db+dof_db[0], 'Kel': kel_db})
-    list_el_dbi.append({'dof_el':local_dof_db+dof_db[0], 'Kel': kel_dbi})
-    if i < nel - 1:
-        list_el_bs.append({'dof_el':list_el_bs[i]['dof_el']+3, 'Kel':kel_bs})
+    list_elem_db.append({'dof_elem':local_dof_db+dof_db[0], 'kelem': kel_db})
+    list_elem_dbi.append({'dof_elem':local_dof_db+dof_db[0], 'kelem': kel_dbi})
+    if i < nelem - 1:
+        list_elem_bs.append({'dof_elem':list_elem_bs[i]['dof_elem']+3, 'kelem':kel_bs})
 
 # assembly
-Ktot_bs = assemblage_K(nel, list_el_bs, ndof_bs, ndof_per_el_bs)
-Ktot_db = assemblage_K(nel, list_el_db, ndof_db, ndof_per_el_db)
-Ktot_dbi = assemblage_K(nel, list_el_dbi, ndof_db, ndof_per_el_db)
+Ktot_bs = assemblage_K(nelem, list_elem_bs, ndof_bs, ndof_per_elem_bs)
+Ktot_db = assemblage_K(nelem, list_elem_db, ndof_db, ndof_per_elem_db)
+Ktot_dbi = assemblage_K(nelem, list_elem_dbi, ndof_db, ndof_per_elem_db)
 
 # Boundary conditions: dof number that is equal to 0
 BC_bs, BC_db = [0, 1, ndof_bs-2], [0, 1, 27, ndof_db-5]
@@ -101,12 +101,12 @@ Utot_dbi = T @ Utot_tilde_dbi
 # prepare the plots by extraction the deflection along the beam with form functions 
 xtot =  [0]
 vtot_bs, vtot_db, vtot_dbi = [0], [0], [0]
-for i in range(nel):
-    uel_bs, uel_db, uel_dbi = Utot_bs[list_el_bs[i]['dof_el']], Utot_db[list_el_db[i]['dof_el']], Utot_dbi[list_el_dbi[i]['dof_el']]
-    xel = np.linspace(0, l_el, 100)
-    xtot.extend(xel+xtot[-1])
-    for x in xel:
-        v_bs, v_db, v_dbi = U0(x, l_el, uel_bs)[1], U0_bilayer(x, l_el, uel_db)[1], U0_bilayer(x, l_el, uel_dbi)[1]
+for i in range(nelem):
+    uelem_bs, uelem_db, uelem_dbi = Utot_bs[list_elem_bs[i]['dof_elem']], Utot_db[list_elem_db[i]['dof_elem']], Utot_dbi[list_elem_dbi[i]['dof_elem']]
+    xelem = np.linspace(0, l_elem, 100)
+    xtot.extend(xelem+xtot[-1])
+    for x in xelem:
+        v_bs, v_db, v_dbi = U_NA(x, l_elem, uelem_bs)[1], U_NA_bilayer(x, l_elem, uelem_db)[1], U_NA_bilayer(x, l_elem, uelem_dbi)[1]
         vtot_bs.append(-v_bs)
         vtot_db.append(-v_db)
         vtot_dbi.append(-v_dbi)
@@ -134,34 +134,34 @@ print('v analytic / v 2-connected layer (gain_dbi) = ', '{:.4}'.format(gain_dbi)
 """ Use the same 4-points bending definition and compare to experimental results"""
 import pandas as pd
 cbtc3 = pd.read_excel('CBTC3.xlsx', sheet_name='Comparaison modèle FEM')
-l_el = L_es
+l_elem = L_es
 # Define the dof of both bot (_b) and top (_t) layer
 ndofnodes_b, ndofnodes_t = 3, 1
 ndofel_bois, ndofel_collab = ndofnodes_b * 2, (ndofnodes_b + ndofnodes_t) * 2
 nnodes_b, nnodes_t = N_c, N_c 
-nel = N_c - 1
+nelem = N_c - 1
 ndof_bois, ndof_collab = nnodes_b * ndofnodes_b, (nnodes_b * ndofnodes_b) + (nnodes_t * ndofnodes_t)
 dof_bois, dof_collab = np.linspace(1, ndof_bois, ndof_bois), np.linspace(1, ndof_collab, ndof_collab)
 list_ndof_bois, list_ndof_collab = np.linspace(0, ndof_bois-1, ndof_bois, dtype=int), np.linspace(0, ndof_collab - 1, ndof_collab, dtype=int)
-L = l_el * nel
+L = l_elem * nelem
 x_nodes = np.linspace(0, L, N_c) # position of each nodes in the global reference frame with one end as origin (in mm)
 # Define load vector and BC for 4-pts bending
 BC_bois, BC_collab = [0, 1, ndof_bois-2], [0, 1, 19, ndof_collab-3]
-kel_bois =  matrix_ke(l_el, E_b, h_b, e_b, ndofel_bois)
-kel_collab = matrix_K2e(E_b, h_b, e_b, E_es, h_es, e_es, l_el) + matrix_Kc(k_c, h_b, h_es, 0, l_el)
+kel_bois =  matrix_kB(l_elem, E_b, h_b, e_b, ndofel_bois)
+kel_collab = matrix_k2B(E_b, h_b, e_b, E_es, h_es, e_es, l_elem) + matrix_kS(k_c, h_b, h_es, 0, l_elem)
 
-list_el_bois, list_el_collab = [{'dof_el':np.array([0,1,2,3,4,5]), 'Kel':kel_bois}], []
+list_elem_bois, list_elem_collab = [{'dof_elem':np.array([0,1,2,3,4,5]), 'kelem':kel_bois}], []
 TC_nodes_collab, TC_dof_collab = connectivity()
 
-for i in range(nel):
+for i in range(nelem):
     nodes = TC_nodes_collab[i]
     dof_collab = [TC_dof_collab[nodes[j]][k] for j in range(len(nodes)) for k in range(len(TC_dof_collab[nodes[j]]))]
-    list_el_collab.append({'dof_el':dof_collab, 'Kel': kel_collab})
-    if i < nel - 1:
-        list_el_bois.append({'dof_el':list_el_bois[i]['dof_el']+3, 'Kel':kel_bois})
+    list_elem_collab.append({'dof_elem':dof_collab, 'kelem': kel_collab})
+    if i < nelem - 1:
+        list_elem_bois.append({'dof_elem':list_elem_bois[i]['dof_elem']+3, 'kelem':kel_bois})
 
-Ktot_bois, Ktot_collab = assemblage_K(nel, list_el_bois, ndof_bois, ndofel_bois), \
-                             assemblage_K(nel, list_el_collab, ndof_collab, ndofel_collab)
+Ktot_bois, Ktot_collab = assemblage_K(nelem, list_elem_bois, ndof_bois, ndofel_bois), \
+                             assemblage_K(nelem, list_elem_collab, ndof_collab, ndofel_collab)
 
 dof_L_bois, dof_B_bois  = list_dof_l(BC_bois, ndof_bois)[:-1]
 dof_L_collab, dof_B_collab = list_dof_l(BC_collab, ndof_collab)[:-1]

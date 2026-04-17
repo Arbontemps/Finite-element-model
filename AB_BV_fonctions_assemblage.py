@@ -94,12 +94,12 @@ def assemblage_K(nel, list_el, ndof, ndof_el):
     """
     K = np.zeros((ndof,ndof))
     for iel in range(nel):
-        dof_globaux = list_el[iel]['dof_el']
+        dof_globaux = list_el[iel]['dof_elem']
         for i in range(ndof_el):
             linK = dof_globaux[i]
             for j in range(ndof_el):
                 colK = dof_globaux[j]
-                K[linK, colK] = K[linK, colK] + list_el[iel]['Kel'][i,j]
+                K[linK, colK] = K[linK, colK] + list_el[iel]['kelem'][i,j]
     return K
 
 
@@ -109,10 +109,10 @@ def assemblage_F(nel, list_el, ndof, ndof_el):
     """
     F = np.zeros((ndof,1))
     for iel in range(nel):
-        dof_globaux = list_el[iel]['dof_el']
+        dof_globaux = list_el[iel]['dof_elem']
         for i in range(ndof_el):
             linF = dof_globaux[i]
-            F[linF,0] = F[linF,0] + list_el[iel]['Fel'][i,0]
+            F[linF,0] = F[linF,0] + list_el[iel]['Felem'][i,0]
     return F
 
 
@@ -123,13 +123,13 @@ def assemblage_B(nel, n_pts_g, list_el, ndof, ndof_el):
     B = np.zeros((2*n_pts_g, ndof)) #2 *nptsg car N et M a chaque point
     B_equ = np.zeros((2*n_pts_g, ndof)) #2 *nptsg car N et M a chaque point
     for iel in range(nel):
-	    dof_globaux = list_el[iel]['dof_el']
-	    for i in range(4):#N et M a chaque point de Gauss
-		    linB = 4*iel + i
-		    for j in range(ndof_el):#Pour chaque dof
-			    colB = dof_globaux[j]
-			    B[linB, colB] = B[linB, colB] + list_el[iel]['Bel'][i][j]
-			    B_equ[linB,colB] = B_equ[linB,colB] + list_el[iel]['Bel_eq'][i][j]
+        dof_globaux = list_el[iel]['dof_el']
+        for i in range(4):#N et M a chaque point de Gauss
+            linB = 4*iel + i
+            for j in range(ndof_el):#Pour chaque dof
+                colB = dof_globaux[j]
+                B[linB, colB] = B[linB, colB] + list_el[iel]['Bel'][i][j]
+                B_equ[linB,colB] = B_equ[linB,colB] + list_el[iel]['Bel_eq'][i][j]
     return B, B_equ
 
 def assemb_J(nel, n_pts_g, list_el, J, J_type):
